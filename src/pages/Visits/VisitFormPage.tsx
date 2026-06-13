@@ -171,15 +171,42 @@ const VisitFormPage = () => {
   }, [openGallery])
 
   const handlePhotoSheet = () => {
-    // Use a simple confirm dialog since Dialog.show actions may have issues on mobile
-    Dialog.confirm({
-      title: '上传检查报告',
-      content: '选择上传方式',
-      confirmText: '📷 拍照',
-      cancelText: '🖼️ 从相册选',
-      onConfirm: handleCapture,
-      onCancel: handlePickGallery,
-    })
+    // Use native buttons for reliable touch on mobile
+    const div = document.createElement('div')
+    div.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#fff;border-radius:16px 16px 0 0;padding:20px;box-shadow:0 -4px 20px rgba(0,0,0,0.2);font-family:system-ui'
+
+    const mask = document.createElement('div')
+    mask.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.4)'
+    mask.onclick = () => { document.body.removeChild(div); document.body.removeChild(mask) }
+
+    const btnStyle = 'display:block;width:100%;padding:16px;border:none;background:#f5f5f5;border-radius:12px;margin-bottom:8px;font-size:16px;text-align:center'
+
+    const cameraBtn = document.createElement('button')
+    cameraBtn.textContent = '📷 拍照'
+    cameraBtn.style.cssText = btnStyle
+    cameraBtn.onclick = async () => {
+      document.body.removeChild(div); document.body.removeChild(mask)
+      handleCapture()
+    }
+
+    const galleryBtn = document.createElement('button')
+    galleryBtn.textContent = '🖼️ 从相册选'
+    galleryBtn.style.cssText = btnStyle
+    galleryBtn.onclick = async () => {
+      document.body.removeChild(div); document.body.removeChild(mask)
+      handlePickGallery()
+    }
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.textContent = '取消'
+    cancelBtn.style.cssText = btnStyle + 'background:#fff;border:1px solid #eee'
+    cancelBtn.onclick = () => { document.body.removeChild(div); document.body.removeChild(mask) }
+
+    div.appendChild(cameraBtn)
+    div.appendChild(galleryBtn)
+    div.appendChild(cancelBtn)
+    document.body.appendChild(mask)
+    document.body.appendChild(div)
   }
 
   return (
