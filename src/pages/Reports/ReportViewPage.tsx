@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Button, Dialog, Toast } from 'antd-mobile'
-import PageHeader from '@/components/Layout/PageHeader'
+import { Dialog, Toast } from 'antd-mobile'
 import Loading from '@/components/common/Loading'
 import { reportService } from '@/services/reportService'
 import { formatDate } from '@/utils/date'
-import { formatFileSize } from '@/services/imageService'
 import { REPORT_CATEGORIES } from '@/utils/constants'
 import type { Report } from '@/db/schema'
 
@@ -97,19 +95,18 @@ const ReportViewPage = () => {
     <div style={{
       minHeight: '100dvh',
       background: '#000',
-      overflow: 'hidden',
-      position: 'relative',
-      touchAction: 'none',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
-      {/* Image Area - full screen */}
+      {/* Image Area - takes remaining space, pinch zoom works here */}
       <div
         style={{
-          width: '100%',
-          height: '100dvh',
+          flex: 1,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
+          touchAction: 'none',
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -131,21 +128,17 @@ const ReportViewPage = () => {
         />
       </div>
 
-      {/* Bottom bar overlay */}
+      {/* Bottom bar - completely separate from touch area, always clickable */}
       <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-        padding: '40px 16px 20px',
+        background: '#1a1a1a',
+        padding: '12px 16px',
+        paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'flex-end',
-        pointerEvents: 'auto',
-        zIndex: 10,
+        alignItems: 'center',
+        flexShrink: 0,
       }}>
-        <div style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
+        <div style={{ color: '#fff', fontSize: 13, opacity: 0.9, flex: 1 }}>
           <div style={{ fontWeight: 600 }}>{report.title}</div>
           <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
             {REPORT_CATEGORIES.find(c => c.value === report.category)?.label} · {formatDate(report.reportDate)}
@@ -154,13 +147,15 @@ const ReportViewPage = () => {
         <button
           onClick={handleDelete}
           style={{
-            background: 'rgba(255,49,65,0.3)',
+            background: '#ff3141',
             border: 'none',
             borderRadius: 8,
-            padding: '8px 16px',
+            padding: '10px 20px',
             color: '#fff',
             fontSize: 14,
-            cursor: 'pointer',
+            fontWeight: 600,
+            flexShrink: 0,
+            marginLeft: 12,
             touchAction: 'manipulation',
           }}
         >
