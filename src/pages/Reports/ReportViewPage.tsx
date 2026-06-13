@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Loading from '@/components/common/Loading'
 import { reportService } from '@/services/reportService'
@@ -12,12 +12,54 @@ const ReportViewPage = () => {
   const [report, setReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Pinch-to-zoom state
-  const [scale, setScale] = useState(1)
-  const [position, setPosition] = useState({ x: 0, y: 0 })
-  const [lastTouch, setLastTouch] = useState<{ dist: number; x: number; y: number } | null>(null)
-  const [moving, setMoving] = useState(false)
-  const [dragStart, setDragStart] = useState<{ x: number; y: number; px: number; py: number } | null>(null)
+  // Smooth zoom & pan using CSS transform with requestAnimationFrame
+  const imgRef = useRef<HTMLImageElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const scaleRef = useRef(1)
+  const posRef = useRef({ x: 0, y: 0 })
+  const [renderScale, setRenderScale] = useState(1)
+  const [renderPos, setRenderPos] = useState({ x: 0, y: 0 })
+
+  // Touch tracking refs (no React state for 60fps)
+  const touchState = useRef<{
+    type: 'none' | 'drag' | 'pinch'
+    startDist: number
+    startScale: number
+    startPos: { x: number; y: number }
+    dragStart: { x: number; y: number }
+    posAtStart: { x: number; y: number }
+    lastPinchCenter: { x: number; y: number }
+  }>({
+    type: 'none',
+    startDist: 0,
+    startScale: 1,
+    startPos: { x: 0, y: 0 },
+    dragStart: { x: 0, y: 0 },
+    posAtStart: { x: 0, y: 0 },
+    lastPinchCenter: { x: 0, y: 0 },
+  })
+
+  // Animation frame ID
+  const rafRef = useRef<number>(0)
+
+  const clampScale = (s: number) => Math.min(5, Math.max(0.8, s))
+  const clampPos = useCallback((p: { x: number; y: number }, s: number) => {
+    // Allow generous pan range when zoomed
+    const maxPan = (s - 1) * 300
+    if (s <= 1) return { x: 0, y: 0 }
+    return {
+      x: Math.min(maxPan, Math.max(-maxPan, p.x)),
+      y: Math.min(maxPan, Math.max(-maxPan, p.y)),
+    }
+  }, [])
+
+  const applyTransform = useCallback(() => {
+    const s = scaleRef.current
+    const p = posRef.current
+    setRenderScale(s)
+    setRenderPos(p)
+  }, [])
 
   useEffect(() => {
     if (id) {
@@ -29,7 +71,6 @@ const ReportViewPage = () => {
   }, [id])
 
   const handleDelete = () => {
-    // Use native confirm for reliability on mobile
     if (window.confirm('确定要删除这张照片吗？')) {
       reportService.remove(Number(id)).then(result => {
         if (result.success) {
@@ -41,49 +82,99 @@ const ReportViewPage = () => {
     }
   }
 
-  const handleDoubleClick = () => {
-    if (scale > 1.5) {
-      setScale(1)
-      setPosition({ x: 0, y: 0 })
-    } else {
-      setScale(2.5)
+  // Double tap to zoom in/out
+  const lastTapRef = useRef(0)
+  const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
+    const now = Date.now()
+    if (now - lastTapRef.current < 300) {
+      // Double tap
+      if (scaleRef.current > 1.5) {
+        scaleRef.current = 1
+        posRef.current = { x: 0, y: 0 }
+      } else {
+        scaleRef.current = 2.5
+        posRef.current = { x: 0, y: 0 }
+      }
+      applyTransform()
     }
+    lastTapRef.current = now
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
+      // Pinch start
       const dx = e.touches[0].clientX - e.touches[1].clientX
       const dy = e.touches[0].clientY - e.touches[1].clientY
-      const dist = Math.sqrt(dx * dx + dy * dy)
       const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2
       const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2
-      setLastTouch({ dist, x: cx, y: cy })
-    } else if (e.touches.length === 1 && scale > 1) {
-      setMoving(true)
-      setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY, px: position.x, py: position.y })
+      touchState.current = {
+        type: 'pinch',
+        startDist: Math.hypot(dx, dy),
+        startScale: scaleRef.current,
+        startPos: { ...posRef.current },
+        dragStart: { x: 0, y: 0 },
+        posAtStart: { ...posRef.current },
+        lastPinchCenter: { x: cx, y: cy },
+      }
+    } else if (e.touches.length === 1) {
+      touchState.current = {
+        type: 'drag',
+        startDist: 0,
+        startScale: scaleRef.current,
+        startPos: { ...posRef.current },
+        dragStart: { x: e.touches[0].clientX, y: e.touches[0].clientY },
+        posAtStart: { ...posRef.current },
+        lastPinchCenter: { x: 0, y: 0 },
+      }
     }
   }
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && lastTouch) {
-      e.preventDefault()
+    e.preventDefault()
+
+    if (e.touches.length === 2 && touchState.current.type === 'pinch') {
       const dx = e.touches[0].clientX - e.touches[1].clientX
       const dy = e.touches[0].clientY - e.touches[1].clientY
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      const scaleChange = dist / lastTouch.dist
-      setScale(prev => Math.min(5, Math.max(0.5, prev * scaleChange)))
-      setLastTouch({ dist, x: lastTouch.x, y: lastTouch.y })
-    } else if (e.touches.length === 1 && moving && dragStart) {
-      const dx = e.touches[0].clientX - dragStart.x
-      const dy = e.touches[0].clientY - dragStart.y
-      setPosition({ x: dragStart.px + dx, y: dragStart.py + dy })
+      const dist = Math.hypot(dx, dy)
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2
+
+      // Scale around pinch center
+      const newScale = clampScale(touchState.current.startScale * (dist / touchState.current.startDist))
+      const scaleDiff = newScale / touchState.current.startScale
+
+      // Move position to keep pinch center stationary
+      const newX = cx - touchState.current.lastPinchCenter.x + touchState.current.startPos.x * scaleDiff
+      const newY = cy - touchState.current.lastPinchCenter.y + touchState.current.startPos.y * scaleDiff
+
+      scaleRef.current = newScale
+      posRef.current = clampPos({ x: newX, y: newY }, newScale)
+      touchState.current.lastPinchCenter = { x: cx, y: cy }
+      touchState.current.startPos = { ...posRef.current }
+      touchState.current.startScale = newScale
+      touchState.current.startDist = dist
+
+      applyTransform()
+    } else if (e.touches.length === 1 && touchState.current.type === 'drag') {
+      const dx = e.touches[0].clientX - touchState.current.dragStart.x
+      const dy = e.touches[0].clientY - touchState.current.dragStart.y
+      const newPos = {
+        x: touchState.current.posAtStart.x + dx,
+        y: touchState.current.posAtStart.y + dy,
+      }
+      posRef.current = clampPos(newPos, scaleRef.current)
+      applyTransform()
     }
   }
 
   const handleTouchEnd = () => {
-    setLastTouch(null)
-    setMoving(false)
-    setDragStart(null)
+    // Snap back if scale <= 1
+    if (scaleRef.current <= 1) {
+      scaleRef.current = 1
+      posRef.current = { x: 0, y: 0 }
+      applyTransform()
+    }
+    touchState.current.type = 'none'
   }
 
   if (loading) return <Loading />
@@ -95,9 +186,11 @@ const ReportViewPage = () => {
       background: '#000',
       display: 'flex',
       flexDirection: 'column',
+      overscrollBehavior: 'none',
     }}>
-      {/* Image Area - takes remaining space, pinch zoom works here */}
+      {/* Image Area */}
       <div
+        ref={containerRef}
         style={{
           flex: 1,
           display: 'flex',
@@ -105,13 +198,16 @@ const ReportViewPage = () => {
           justifyContent: 'center',
           overflow: 'hidden',
           touchAction: 'none',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onDoubleClick={handleDoubleClick}
+        onClick={handleClick}
       >
         <img
+          ref={imgRef}
           src={report.fileData}
           alt={report.title}
           draggable={false}
@@ -120,13 +216,17 @@ const ReportViewPage = () => {
             height: 'auto',
             maxHeight: '100%',
             objectFit: 'contain',
-            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-            transition: lastTouch ? 'none' : 'transform 0.2s ease-out',
+            transform: `translate3d(${renderPos.x}px, ${renderPos.y}px, 0) scale(${renderScale})`,
+            transition: touchState.current.type === 'none' && renderScale === 1
+              ? 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+              : 'none',
+            willChange: touchState.current.type !== 'none' ? 'transform' : 'auto',
+            pointerEvents: 'none',
           }}
         />
       </div>
 
-      {/* Bottom bar - completely separate from touch area, always clickable */}
+      {/* Bottom bar */}
       <div style={{
         background: '#1a1a1a',
         padding: '12px 16px',
