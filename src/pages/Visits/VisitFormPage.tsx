@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Form, Input, TextArea, DatePicker, Button, Picker, Dialog, Toast, ImageViewer } from 'antd-mobile'
+import { Form, Input, TextArea, DatePicker, Button, Picker, Dialog, Toast, ImageViewer, SpinLoading } from 'antd-mobile'
 import { DeleteOutline, CameraOutline } from 'antd-mobile-icons'
 import PageHeader from '@/components/Layout/PageHeader'
 import { visitService } from '@/services/visitService'
 import { reportService } from '@/services/reportService'
 import { reminderService } from '@/services/reminderService'
 import { useCamera } from '@/hooks/useCamera'
+import { useAI } from '@/hooks/useAI'
 import { DEPARTMENTS } from '@/utils/constants'
 import type { Visit } from '@/db/schema'
 
@@ -20,6 +21,9 @@ const VisitFormPage = () => {
   const [deptVisible, setDeptVisible] = useState(false)
   const [followUpVisible, setFollowUpVisible] = useState(false)
   const [visitDateVisible, setVisitDateVisible] = useState(false)
+
+  // AI state
+  const { loading: aiLoading, progress: aiProgress, progressPct: aiPct, ocrReport } = useAI()
 
   // Photo report state
   const [attachedPhoto, setAttachedPhoto] = useState<{
@@ -153,9 +157,25 @@ const VisitFormPage = () => {
         fileName: result.fileName,
         fileSize: result.fileSize,
       })
-      Toast.show({ icon: 'success', content: '照片已添加' })
+      Toast.show({ icon: 'success', content: '照片已添加，正在OCR识别...' })
+
+      // Auto OCR the captured image
+      try {
+        const fields = await ocrReport(result.dataUrl)
+        if (Object.keys(fields).length > 0) {
+          setFormData(p => ({
+            ...p,
+            hospitalName: fields.hospitalName || p.hospitalName,
+            diagnosis: fields.diagnosis || p.diagnosis,
+            doctorName: fields.doctorName || p.doctorName,
+          }))
+          Toast.show({ icon: 'success', content: `OCR识别完成，已自动填入${Object.keys(fields).length}个字段` })
+        }
+      } catch {
+        // OCR failed silently, photo still saved
+      }
     }
-  }, [openCamera])
+  }, [openCamera, ocrReport])
 
   const handlePickGallery = useCallback(async () => {
     const result = await openGallery()
@@ -166,9 +186,24 @@ const VisitFormPage = () => {
         fileName: result.fileName,
         fileSize: result.fileSize,
       })
-      Toast.show({ icon: 'success', content: '照片已添加' })
+      Toast.show({ icon: 'success', content: '照片已添加，正在OCR识别...' })
+
+      try {
+        const fields = await ocrReport(result.dataUrl)
+        if (Object.keys(fields).length > 0) {
+          setFormData(p => ({
+            ...p,
+            hospitalName: fields.hospitalName || p.hospitalName,
+            diagnosis: fields.diagnosis || p.diagnosis,
+            doctorName: fields.doctorName || p.doctorName,
+          }))
+          Toast.show({ icon: 'success', content: `OCR识别完成，已自动填入${Object.keys(fields).length}个字段` })
+        }
+      } catch {
+        // OCR failed silently
+      }
     }
-  }, [openGallery])
+  }, [openGallery, ocrReport])
 
   const handlePhotoSheet = () => {
     // Use native buttons for reliable touch on mobile
@@ -281,8 +316,24 @@ const VisitFormPage = () => {
             />
           </Form.Item>
 
-          {/* 检查报告拍照上传 */}
+          {/* 检查报告拍照上传 - AI OCR */}
           <Form.Item label="检查报告">
+            {aiLoading && (
+              <div style={{
+                marginBottom: 8,
+                padding: '8px 12px',
+                background: '#f0f7ff',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 12,
+                color: '#1677ff',
+              }}>
+                <SpinLoading style={{ '--size': '16px' }} color="primary" />
+                <span>{aiProgress} ({Math.round(aiPct)}%)</span>
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 4 }}>
               {attachedPhoto ? (
                 <div style={{ position: 'relative', flexShrink: 0 }}>
