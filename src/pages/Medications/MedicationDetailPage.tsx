@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Button, Dialog, Toast } from 'antd-mobile'
+import { Button, Dialog, Toast, SpinLoading } from 'antd-mobile'
 import { EditFill, DeleteOutline } from 'antd-mobile-icons'
 import PageHeader from '@/components/Layout/PageHeader'
 import Loading from '@/components/common/Loading'
 import { medicationService } from '@/services/medicationService'
+import { useAI } from '@/hooks/useAI'
 import { formatDate } from '@/utils/date'
 import type { Medication } from '@/db/schema'
 
@@ -16,6 +17,10 @@ const MedicationDetailPage = () => {
   const navigate = useNavigate()
   const [med, setMed] = useState<Medication | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // AI drug advice
+  const [drugAdvice, setDrugAdvice] = useState<string[] | null>(null)
+  const { loading: aiLoading, getDrugAdvice } = useAI()
 
   useEffect(() => {
     if (id) {
@@ -117,6 +122,58 @@ const MedicationDetailPage = () => {
               </Button>
             ))}
           </div>
+        </div>
+
+        {/* AI 用药建议 */}
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: drugAdvice ? 8 : 0 }}>
+            <div style={{ fontSize: 13, color: '#999' }}>AI 用药建议</div>
+            {!drugAdvice && !aiLoading && (
+              <Button
+                size="mini"
+                color="primary"
+                fill="none"
+                onClick={async () => {
+                  const diagnosis = localStorage.getItem('last_diagnosis') || ''
+                  const advice = await getDrugAdvice(diagnosis, med.name)
+                  setDrugAdvice(advice)
+                }}
+              >
+                查看建议
+              </Button>
+            )}
+          </div>
+          {aiLoading && (
+            <div style={{ textAlign: 'center', padding: 12 }}>
+              <SpinLoading style={{ '--size': '16px', margin: '0 auto' }} color="primary" />
+              <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>查询中...</div>
+            </div>
+          )}
+          {drugAdvice && (
+            <div>
+              {drugAdvice.map((tip, i) => (
+                <div key={i} style={{
+                  padding: '6px 0',
+                  borderBottom: i < drugAdvice.length - 1 ? '1px solid #f5f5f5' : 'none',
+                  fontSize: 12,
+                  color: '#333',
+                  lineHeight: 1.6,
+                }}>
+                  {tip.startsWith('【') ? (
+                    <>
+                      <span style={{ color: '#ff8f1f', fontWeight: 500 }}>{tip.split('】')[0]}】</span>
+                      {tip.substring(tip.indexOf('】') + 1)}
+                    </>
+                  ) : (
+                    tip
+                  )}
+                </div>
+              ))}
+              <Button size="mini" fill="none" onClick={() => setDrugAdvice(null)} style={{ marginTop: 8 }}>
+                收起
+              </Button>
+            </div>
+          )}
         </div>
 
         {med.notes && (
