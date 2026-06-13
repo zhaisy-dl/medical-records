@@ -11,14 +11,14 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/icon-192x192.png', 'icons/icon-512x512.png'],
       manifest: {
-        name: '病历管理',
-        short_name: '病历',
-        description: '个人病历管理应用',
-        theme_color: '#1677ff',
+        name: '健康管理',
+        short_name: '健康',
+        description: '个人健康管理应用',
+        theme_color: '#ff4d4f',
         background_color: '#f5f5f5',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: '/medical-records/',
         icons: [
           {
             src: 'icons/icon-192x192.png',

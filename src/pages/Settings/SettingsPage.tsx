@@ -262,7 +262,7 @@ const SettingsPage = () => {
       </List>
 
       <div style={{ textAlign: 'center', color: '#ccc', fontSize: 12, marginTop: 24 }}>
-        病历管理 v1.0.0
+        健康管理 v1.0.0
       </div>
 
       {/* 个人信息编辑弹窗 */}

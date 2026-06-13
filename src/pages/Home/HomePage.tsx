@@ -47,7 +47,7 @@ const HomePage = () => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 700 }}>病历管理</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 700 }}>健康管理</h2>
           <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
             {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
           </div>

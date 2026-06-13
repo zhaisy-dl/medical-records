@@ -43,7 +43,7 @@ export const REMINDER_TYPES = [
   { value: 'custom', label: '自定义' },
 ] as const
 
-export const APP_NAME = '病历管理'
+export const APP_NAME = '健康管理'
 export const DB_NAME = 'MedicalRecordsDB'
 export const MAX_PHOTO_SIZE_KB = 200
 export const THUMBNAIL_SIZE_KB = 20
