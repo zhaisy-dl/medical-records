@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button, Dialog, Toast } from 'antd-mobile'
-import { DeleteOutline } from 'antd-mobile-icons'
 import PageHeader from '@/components/Layout/PageHeader'
 import Loading from '@/components/common/Loading'
 import { reportService } from '@/services/reportService'
@@ -143,6 +142,8 @@ const ReportViewPage = () => {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-end',
+        pointerEvents: 'auto',
+        zIndex: 10,
       }}>
         <div style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
           <div style={{ fontWeight: 600 }}>{report.title}</div>
@@ -150,9 +151,21 @@ const ReportViewPage = () => {
             {REPORT_CATEGORIES.find(c => c.value === report.category)?.label} · {formatDate(report.reportDate)}
           </div>
         </div>
-        <Button size="small" fill="none" style={{ color: '#ff6b6b' }} onClick={handleDelete}>
-          <DeleteOutline />
-        </Button>
+        <button
+          onClick={handleDelete}
+          style={{
+            background: 'rgba(255,49,65,0.3)',
+            border: 'none',
+            borderRadius: 8,
+            padding: '8px 16px',
+            color: '#fff',
+            fontSize: 14,
+            cursor: 'pointer',
+            touchAction: 'manipulation',
+          }}
+        >
+          删除
+        </button>
       </div>
     </div>
   )
