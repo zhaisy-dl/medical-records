@@ -15,7 +15,13 @@ const ReportViewPage = () => {
   const navigate = useNavigate()
   const [report, setReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
-  const [zoom, setZoom] = useState(false)
+
+  // Pinch-to-zoom state
+  const [scale, setScale] = useState(1)
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [lastTouch, setLastTouch] = useState<{ dist: number; x: number; y: number } | null>(null)
+  const [moving, setMoving] = useState(false)
+  const [dragStart, setDragStart] = useState<{ x: number; y: number; px: number; py: number } | null>(null)
 
   useEffect(() => {
     if (id) {
@@ -40,59 +46,113 @@ const ReportViewPage = () => {
     })
   }
 
+  const handleDoubleClick = () => {
+    if (scale > 1.5) {
+      setScale(1)
+      setPosition({ x: 0, y: 0 })
+    } else {
+      setScale(2.5)
+    }
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2
+      setLastTouch({ dist, x: cx, y: cy })
+    } else if (e.touches.length === 1 && scale > 1) {
+      setMoving(true)
+      setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY, px: position.x, py: position.y })
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && lastTouch) {
+      e.preventDefault()
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const scaleChange = dist / lastTouch.dist
+      setScale(prev => Math.min(5, Math.max(0.5, prev * scaleChange)))
+      setLastTouch({ dist, x: lastTouch.x, y: lastTouch.y })
+    } else if (e.touches.length === 1 && moving && dragStart) {
+      const dx = e.touches[0].clientX - dragStart.x
+      const dy = e.touches[0].clientY - dragStart.y
+      setPosition({ x: dragStart.px + dx, y: dragStart.py + dy })
+    }
+  }
+
+  const handleTouchEnd = () => {
+    setLastTouch(null)
+    setMoving(false)
+    setDragStart(null)
+  }
+
   if (loading) return <Loading />
   if (!report) return <div className="page-container">报告不存在</div>
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#000' }}>
-      {/* Image Area */}
+    <div style={{
+      minHeight: '100dvh',
+      background: '#000',
+      overflow: 'hidden',
+      position: 'relative',
+      touchAction: 'none',
+    }}>
+      {/* Image Area - full screen */}
       <div
         style={{
           width: '100%',
-          height: '70dvh',
+          height: '100dvh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          overflow: 'auto',
-          cursor: zoom ? 'zoom-out' : 'zoom-in',
+          overflow: 'hidden',
         }}
-        onClick={() => setZoom(!zoom)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onDoubleClick={handleDoubleClick}
       >
         <img
           src={report.fileData}
           alt={report.title}
+          draggable={false}
           style={{
-            maxWidth: zoom ? '200%' : '100%',
-            maxHeight: zoom ? '200%' : '100%',
-            objectFit: zoom ? 'none' : 'contain',
-            transition: 'all 0.2s',
+            width: '100%',
+            height: 'auto',
+            maxHeight: '100%',
+            objectFit: 'contain',
+            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+            transition: lastTouch ? 'none' : 'transform 0.2s ease-out',
           }}
         />
       </div>
 
-      {/* Info */}
+      {/* Bottom bar overlay */}
       <div style={{
-        background: '#1a1a1a',
-        padding: 16,
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        marginTop: -16,
-        position: 'relative',
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+        padding: '40px 16px 20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-end',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <div style={{ color: '#fff', fontSize: 16, fontWeight: 600 }}>{report.title}</div>
-          <Button size="small" fill="none" color="danger" onClick={handleDelete}>
-            <DeleteOutline />
-          </Button>
+        <div style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
+          <div style={{ fontWeight: 600 }}>{report.title}</div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+            {REPORT_CATEGORIES.find(c => c.value === report.category)?.label} · {formatDate(report.reportDate)}
+          </div>
         </div>
-        <div style={{ color: '#999', fontSize: 12, display: 'flex', gap: 12 }}>
-          <span>{REPORT_CATEGORIES.find(c => c.value === report.category)?.label || report.category}</span>
-          <span>{formatDate(report.reportDate)}</span>
-          <span>{formatFileSize(report.fileSize)}</span>
-        </div>
-        {report.description && (
-          <div style={{ color: '#ccc', fontSize: 13, marginTop: 8 }}>{report.description}</div>
-        )}
+        <Button size="small" fill="none" style={{ color: '#ff6b6b' }} onClick={handleDelete}>
+          <DeleteOutline />
+        </Button>
       </div>
     </div>
   )

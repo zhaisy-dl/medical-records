@@ -1,11 +1,12 @@
 import imageCompression from 'browser-image-compression'
 
-export async function compressImage(file: File, maxSizeKB = 200): Promise<{ dataUrl: string; compressedFile: File }> {
+export async function compressImage(file: File, maxSizeKB = 300): Promise<{ dataUrl: string; compressedFile: File }> {
   const options = {
     maxSizeMB: maxSizeKB / 1024,
-    maxWidthOrHeight: 1920,
+    maxWidthOrHeight: 2400,
     useWebWorker: true,
     fileType: 'image/jpeg' as const,
+    initialQuality: 0.9,
   }
 
   const compressedFile = await imageCompression(file, options)
@@ -13,12 +14,13 @@ export async function compressImage(file: File, maxSizeKB = 200): Promise<{ data
   return { dataUrl, compressedFile }
 }
 
-export async function generateThumbnail(file: File, maxSizeKB = 20): Promise<string> {
+export async function generateThumbnail(file: File, maxSizeKB = 30): Promise<string> {
   const options = {
     maxSizeMB: maxSizeKB / 1024,
-    maxWidthOrHeight: 200,
+    maxWidthOrHeight: 300,
     useWebWorker: true,
     fileType: 'image/jpeg' as const,
+    initialQuality: 0.8,
   }
 
   const thumbnail = await imageCompression(file, options)

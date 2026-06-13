@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { compressImage, generateThumbnail } from '@/services/imageService'
+import { generateThumbnail, fileToDataUrl } from '@/services/imageService'
 
 interface CaptureResult {
   dataUrl: string
@@ -10,36 +10,35 @@ interface CaptureResult {
 }
 
 export function useCamera() {
-  const inputRef = useRef<HTMLInputElement>(null)
   const [capturing, setCapturing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const openCamera = (): Promise<CaptureResult | null> => {
+  const pickFile = (opts?: { capture?: 'environment' | 'user' }): Promise<CaptureResult | null> => {
     return new Promise(resolve => {
       setError(null)
       const input = document.createElement('input')
       input.type = 'file'
       input.accept = 'image/*'
-      input.capture = 'environment'
+      if (opts?.capture) {
+        input.setAttribute('capture', opts.capture)
+      }
 
       input.onchange = async () => {
         const file = input.files?.[0]
-        if (!file) {
-          resolve(null)
-          return
-        }
+        if (!file) { resolve(null); return }
 
         setCapturing(true)
         try {
-          const { dataUrl, compressedFile } = await compressImage(file)
+          // Store original as base64 (full quality), not compressed
+          const originalDataUrl = await fileToDataUrl(file)
           const thumbnail = await generateThumbnail(file)
           setCapturing(false)
           resolve({
-            dataUrl,
+            dataUrl: originalDataUrl,
             thumbnail,
             fileName: file.name || `IMG_${Date.now()}.jpg`,
-            fileSize: compressedFile.size,
-            mimeType: 'image/jpeg',
+            fileSize: file.size,
+            mimeType: file.type || 'image/jpeg',
           })
         } catch (e) {
           setCapturing(false)
@@ -49,47 +48,21 @@ export function useCamera() {
       }
 
       input.oncancel = () => resolve(null)
+      // MUST append to body for iOS Safari to fire events
+      input.style.display = 'none'
+      document.body.appendChild(input)
       input.click()
+      setTimeout(() => { document.body.removeChild(input) }, 5000)
     })
+  }
+
+  const openCamera = (): Promise<CaptureResult | null> => {
+    return pickFile({ capture: 'environment' })
   }
 
   const openGallery = (): Promise<CaptureResult | null> => {
-    return new Promise(resolve => {
-      setError(null)
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'image/*'
-
-      input.onchange = async () => {
-        const file = input.files?.[0]
-        if (!file) {
-          resolve(null)
-          return
-        }
-
-        setCapturing(true)
-        try {
-          const { dataUrl, compressedFile } = await compressImage(file)
-          const thumbnail = await generateThumbnail(file)
-          setCapturing(false)
-          resolve({
-            dataUrl,
-            thumbnail,
-            fileName: file.name || `IMG_${Date.now()}.jpg`,
-            fileSize: compressedFile.size,
-            mimeType: 'image/jpeg',
-          })
-        } catch (e) {
-          setCapturing(false)
-          setError(String(e))
-          resolve(null)
-        }
-      }
-
-      input.oncancel = () => resolve(null)
-      input.click()
-    })
+    return pickFile()
   }
 
-  return { inputRef, capturing, error, openCamera, openGallery }
+  return { capturing, error, openCamera, openGallery }
 }
