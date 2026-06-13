@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Dialog, Toast } from 'antd-mobile'
 import Loading from '@/components/common/Loading'
 import { reportService } from '@/services/reportService'
 import { formatDate } from '@/utils/date'
@@ -30,17 +29,16 @@ const ReportViewPage = () => {
   }, [id])
 
   const handleDelete = () => {
-    Dialog.confirm({
-      title: '确认删除',
-      content: '确定要删除这张照片吗？',
-      onConfirm: async () => {
-        const result = await reportService.remove(Number(id))
+    // Use native confirm for reliability on mobile
+    if (window.confirm('确定要删除这张照片吗？')) {
+      reportService.remove(Number(id)).then(result => {
         if (result.success) {
-          Toast.show({ icon: 'success', content: '已删除' })
           navigate('/reports', { replace: true })
+        } else {
+          alert('删除失败: ' + result.error)
         }
-      },
-    })
+      })
+    }
   }
 
   const handleDoubleClick = () => {
