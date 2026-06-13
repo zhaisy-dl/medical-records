@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Form, Input, TextArea, DatePicker, Button, Picker, Dialog, Toast, ImageViewer } from 'antd-mobile'
 import { DeleteOutline, CameraOutline } from 'antd-mobile-icons'
@@ -18,6 +18,8 @@ const VisitFormPage = () => {
   const isEdit = !!id
   const [loading, setLoading] = useState(false)
   const [deptVisible, setDeptVisible] = useState(false)
+  const [followUpVisible, setFollowUpVisible] = useState(false)
+  const [visitDateVisible, setVisitDateVisible] = useState(false)
 
   // Photo report state
   const [attachedPhoto, setAttachedPhoto] = useState<{
@@ -42,7 +44,7 @@ const VisitFormPage = () => {
   })
 
   // Load existing data for editing
-  useState(() => {
+  useEffect(() => {
     if (id) {
       visitService.getById(Number(id)).then(visit => {
         if (visit) {
@@ -60,7 +62,7 @@ const VisitFormPage = () => {
         }
       })
     }
-  })
+  }, [id])
 
   const handleSubmit = async () => {
     if (!formData.hospitalName.trim()) {
@@ -142,7 +144,7 @@ const VisitFormPage = () => {
     })
   }
 
-  const handleCapture = async () => {
+  const handleCapture = useCallback(async () => {
     const result = await openCamera()
     if (result) {
       setAttachedPhoto({
@@ -153,9 +155,9 @@ const VisitFormPage = () => {
       })
       Toast.show({ icon: 'success', content: '照片已添加' })
     }
-  }
+  }, [openCamera])
 
-  const handlePickGallery = async () => {
+  const handlePickGallery = useCallback(async () => {
     const result = await openGallery()
     if (result) {
       setAttachedPhoto({
@@ -166,22 +168,17 @@ const VisitFormPage = () => {
       })
       Toast.show({ icon: 'success', content: '照片已添加' })
     }
-  }
+  }, [openGallery])
 
   const handlePhotoSheet = () => {
-    Dialog.show({
+    // Use a simple confirm dialog since Dialog.show actions may have issues on mobile
+    Dialog.confirm({
       title: '上传检查报告',
-      content: '选择方式',
-      closeOnAction: true,
-      actions: [
-        [
-          { key: 'camera', text: '📷 拍照', onClick: handleCapture },
-          { key: 'gallery', text: '🖼️ 从相册选', onClick: handlePickGallery },
-        ],
-        [
-          { key: 'cancel', text: '取消' },
-        ],
-      ],
+      content: '选择上传方式',
+      confirmText: '📷 拍照',
+      cancelText: '🖼️ 从相册选',
+      onConfirm: handleCapture,
+      onCancel: handlePickGallery,
     })
   }
 
@@ -198,15 +195,14 @@ const VisitFormPage = () => {
 
       <div className="page-container">
         <Form layout="horizontal" style={{ '--border-inner': 'none' } as React.CSSProperties}>
+          {/* 就诊日期 - use direct button for reliability */}
           <Form.Item label="就诊日期" required>
-            <DatePicker
-              value={formData.visitDate}
-              onConfirm={val => setFormData(p => ({ ...p, visitDate: val || new Date() }))}
-              min={new Date(2000, 0, 1)}
-              max={new Date()}
+            <div
+              onClick={() => setVisitDateVisible(true)}
+              style={{ color: '#333', cursor: 'pointer', padding: '8px 0' }}
             >
-              {value => value?.toLocaleDateString('zh-CN') || '请选择日期'}
-            </DatePicker>
+              {formData.visitDate.toLocaleDateString('zh-CN')}
+            </div>
           </Form.Item>
 
           <Form.Item label="医院名称" required>
@@ -258,11 +254,11 @@ const VisitFormPage = () => {
             />
           </Form.Item>
 
-          {/* 检查报告拍照上传 - 放在诊断下方 */}
+          {/* 检查报告拍照上传 */}
           <Form.Item label="检查报告">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 4 }}>
               {attachedPhoto ? (
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', flexShrink: 0 }}>
                   <img
                     src={attachedPhoto.thumbnail}
                     alt="报告"
@@ -294,14 +290,14 @@ const VisitFormPage = () => {
             </div>
           </Form.Item>
 
+          {/* 复诊日期 - use direct date picker trigger */}
           <Form.Item label="复诊日期">
-            <DatePicker
-              value={formData.followUpDate}
-              onConfirm={val => setFormData(p => ({ ...p, followUpDate: val || undefined }))}
-              min={new Date()}
+            <div
+              onClick={() => setFollowUpVisible(true)}
+              style={{ color: formData.followUpDate ? '#333' : '#ccc', cursor: 'pointer', padding: '8px 0' }}
             >
-              {value => value?.toLocaleDateString('zh-CN') || '请选择（有复诊建议选填）'}
-            </DatePicker>
+              {formData.followUpDate?.toLocaleDateString('zh-CN') || '请选择（有复诊建议选填）'}
+            </div>
           </Form.Item>
 
           <Form.Item label="备注">
@@ -325,6 +321,33 @@ const VisitFormPage = () => {
           {isEdit ? '保存修改' : '保存记录'}
         </Button>
       </div>
+
+      {/* Visit Date Picker */}
+      <DatePicker
+        visible={visitDateVisible}
+        value={formData.visitDate}
+        onConfirm={val => {
+          setFormData(p => ({ ...p, visitDate: val || new Date() }))
+          setVisitDateVisible(false)
+        }}
+        onClose={() => setVisitDateVisible(false)}
+        min={new Date(2000, 0, 1)}
+        max={new Date()}
+        title="选择就诊日期"
+      />
+
+      {/* Follow-up Date Picker */}
+      <DatePicker
+        visible={followUpVisible}
+        value={formData.followUpDate}
+        onConfirm={val => {
+          setFormData(p => ({ ...p, followUpDate: val || undefined }))
+          setFollowUpVisible(false)
+        }}
+        onClose={() => setFollowUpVisible(false)}
+        min={new Date()}
+        title="选择复诊日期"
+      />
 
       {/* Department Picker */}
       <Picker
