@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import TabBarLayout from './components/Layout/TabBarLayout'
@@ -20,6 +21,18 @@ import AppLockPage from './pages/Settings/AppLockPage'
 import './assets/styles/global.css'
 
 function App() {
+  // Hide splash screen once app mounts
+  useEffect(() => {
+    const splash = document.getElementById('splash')
+    if (splash) {
+      // Small delay to let first paint happen
+      setTimeout(() => {
+        splash.classList.add('hide')
+        setTimeout(() => splash.remove(), 400)
+      }, 100)
+    }
+  }, [])
+
   return (
     <ErrorBoundary>
       <HashRouter>
