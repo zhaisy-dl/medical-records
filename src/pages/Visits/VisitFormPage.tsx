@@ -1,0 +1,354 @@
+import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { Form, Input, TextArea, DatePicker, Button, Picker, Dialog, Toast, ImageViewer } from 'antd-mobile'
+import { DeleteOutline, CameraOutline } from 'antd-mobile-icons'
+import PageHeader from '@/components/Layout/PageHeader'
+import { visitService } from '@/services/visitService'
+import { reportService } from '@/services/reportService'
+import { reminderService } from '@/services/reminderService'
+import { useCamera } from '@/hooks/useCamera'
+import { DEPARTMENTS } from '@/utils/constants'
+import type { Visit } from '@/db/schema'
+
+const deptColumns = [DEPARTMENTS.map(d => ({ label: d, value: d }))]
+
+const VisitFormPage = () => {
+  const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const isEdit = !!id
+  const [loading, setLoading] = useState(false)
+  const [deptVisible, setDeptVisible] = useState(false)
+
+  // Photo report state
+  const [attachedPhoto, setAttachedPhoto] = useState<{
+    dataUrl: string
+    thumbnail: string
+    fileName: string
+    fileSize: number
+  } | null>(null)
+  const [viewerVisible, setViewerVisible] = useState(false)
+  const { capturing, openCamera, openGallery } = useCamera()
+
+  const [formData, setFormData] = useState({
+    visitDate: new Date(),
+    hospitalName: '',
+    department: '',
+    doctorName: '',
+    chiefComplaint: '',
+    diagnosis: '',
+    treatment: '',
+    followUpDate: undefined as Date | undefined,
+    notes: '',
+  })
+
+  // Load existing data for editing
+  useState(() => {
+    if (id) {
+      visitService.getById(Number(id)).then(visit => {
+        if (visit) {
+          setFormData({
+            visitDate: new Date(visit.visitDate),
+            hospitalName: visit.hospitalName,
+            department: visit.department,
+            doctorName: visit.doctorName,
+            chiefComplaint: visit.chiefComplaint,
+            diagnosis: visit.diagnosis,
+            treatment: visit.treatment,
+            followUpDate: visit.followUpDate ? new Date(visit.followUpDate) : undefined,
+            notes: visit.notes,
+          })
+        }
+      })
+    }
+  })
+
+  const handleSubmit = async () => {
+    if (!formData.hospitalName.trim()) {
+      Toast.show({ icon: 'fail', content: '请填写医院名称' })
+      return
+    }
+    if (!formData.department) {
+      Toast.show({ icon: 'fail', content: '请选择科室' })
+      return
+    }
+
+    setLoading(true)
+    const data = {
+      ...formData,
+      visitDate: formData.visitDate,
+      chiefComplaint: formData.chiefComplaint || '',
+      diagnosis: formData.diagnosis || '',
+      treatment: formData.treatment || '',
+      notes: formData.notes || '',
+    }
+
+    const result = isEdit
+      ? await visitService.update(Number(id), data)
+      : await visitService.create(data)
+
+    if (result.success) {
+      const visitId = isEdit ? Number(id) : result.data
+
+      // Save attached photo as report
+      if (attachedPhoto && visitId) {
+        await reportService.create({
+          title: `就诊报告_${formData.diagnosis || formData.hospitalName}`,
+          category: 'other',
+          fileData: attachedPhoto.dataUrl,
+          thumbnailData: attachedPhoto.thumbnail,
+          mimeType: 'image/jpeg',
+          fileSize: attachedPhoto.fileSize,
+          reportDate: formData.visitDate,
+          visitId,
+          description: formData.diagnosis || '',
+        })
+      }
+
+      // Auto-create follow-up reminder if followUpDate is set
+      if (formData.followUpDate && visitId) {
+        await reminderService.create({
+          title: `复诊提醒 · ${formData.hospitalName}`,
+          type: 'followUp',
+          reminderDate: formData.followUpDate,
+          reminderTime: '09:00',
+          repeatType: 'none',
+          isActive: true,
+          isCompleted: false,
+          relatedType: 'visit',
+          relatedId: visitId,
+          notes: formData.diagnosis || '',
+        })
+      }
+
+      Toast.show({ icon: 'success', content: isEdit ? '已更新' : '已保存' })
+      navigate(-1)
+    } else {
+      Toast.show({ icon: 'fail', content: result.error })
+    }
+    setLoading(false)
+  }
+
+  const handleDelete = () => {
+    Dialog.confirm({
+      title: '确认删除',
+      content: '删除后相关用药、指标、报告也会一并删除，确定吗？',
+      onConfirm: async () => {
+        const result = await visitService.remove(Number(id))
+        if (result.success) {
+          Toast.show({ icon: 'success', content: '已删除' })
+          navigate('/visits', { replace: true })
+        }
+      },
+    })
+  }
+
+  const handleCapture = async () => {
+    const result = await openCamera()
+    if (result) {
+      setAttachedPhoto({
+        dataUrl: result.dataUrl,
+        thumbnail: result.thumbnail,
+        fileName: result.fileName,
+        fileSize: result.fileSize,
+      })
+      Toast.show({ icon: 'success', content: '照片已添加' })
+    }
+  }
+
+  const handlePickGallery = async () => {
+    const result = await openGallery()
+    if (result) {
+      setAttachedPhoto({
+        dataUrl: result.dataUrl,
+        thumbnail: result.thumbnail,
+        fileName: result.fileName,
+        fileSize: result.fileSize,
+      })
+      Toast.show({ icon: 'success', content: '照片已添加' })
+    }
+  }
+
+  const handlePhotoSheet = () => {
+    Dialog.show({
+      title: '上传检查报告',
+      content: '选择方式',
+      closeOnAction: true,
+      actions: [
+        [
+          { key: 'camera', text: '📷 拍照', onClick: handleCapture },
+          { key: 'gallery', text: '🖼️ 从相册选', onClick: handlePickGallery },
+        ],
+        [
+          { key: 'cancel', text: '取消' },
+        ],
+      ],
+    })
+  }
+
+  return (
+    <div style={{ minHeight: '100dvh', background: '#f5f5f5' }}>
+      <PageHeader
+        title={isEdit ? '编辑就诊' : '新增就诊'}
+        right={isEdit ? (
+          <Button size="small" fill="none" color="danger" onClick={handleDelete}>
+            <DeleteOutline />
+          </Button>
+        ) : undefined}
+      />
+
+      <div className="page-container">
+        <Form layout="horizontal" style={{ '--border-inner': 'none' } as React.CSSProperties}>
+          <Form.Item label="就诊日期" required>
+            <DatePicker
+              value={formData.visitDate}
+              onConfirm={val => setFormData(p => ({ ...p, visitDate: val || new Date() }))}
+              min={new Date(2000, 0, 1)}
+              max={new Date()}
+            >
+              {value => value?.toLocaleDateString('zh-CN') || '请选择日期'}
+            </DatePicker>
+          </Form.Item>
+
+          <Form.Item label="医院名称" required>
+            <Input
+              placeholder="如：协和医院"
+              value={formData.hospitalName}
+              onChange={val => setFormData(p => ({ ...p, hospitalName: val }))}
+            />
+          </Form.Item>
+
+          <Form.Item label="科室" required onClick={() => setDeptVisible(true)}>
+            <span style={{ color: formData.department ? '#333' : '#ccc' }}>
+              {formData.department || '请选择科室'}
+            </span>
+          </Form.Item>
+
+          <Form.Item label="医生姓名">
+            <Input
+              placeholder="可选"
+              value={formData.doctorName}
+              onChange={val => setFormData(p => ({ ...p, doctorName: val }))}
+            />
+          </Form.Item>
+
+          <Form.Item label="主诉">
+            <TextArea
+              placeholder="如：胸闷气短3天"
+              rows={2}
+              value={formData.chiefComplaint}
+              onChange={val => setFormData(p => ({ ...p, chiefComplaint: val }))}
+            />
+          </Form.Item>
+
+          <Form.Item label="诊断结果">
+            <TextArea
+              placeholder="医生的诊断"
+              rows={2}
+              value={formData.diagnosis}
+              onChange={val => setFormData(p => ({ ...p, diagnosis: val }))}
+            />
+          </Form.Item>
+
+          <Form.Item label="治疗方案">
+            <TextArea
+              placeholder="处方、处置等"
+              rows={2}
+              value={formData.treatment}
+              onChange={val => setFormData(p => ({ ...p, treatment: val }))}
+            />
+          </Form.Item>
+
+          {/* 检查报告拍照上传 - 放在诊断下方 */}
+          <Form.Item label="检查报告">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {attachedPhoto ? (
+                <div style={{ position: 'relative' }}>
+                  <img
+                    src={attachedPhoto.thumbnail}
+                    alt="报告"
+                    style={{ width: 72, height: 72, borderRadius: 8, objectFit: 'cover', border: '1px solid #eee' }}
+                    onClick={() => setViewerVisible(true)}
+                  />
+                  <span
+                    style={{
+                      position: 'absolute', top: -8, right: -8,
+                      background: '#ff3141', color: '#fff', borderRadius: '50%',
+                      width: 20, height: 20, fontSize: 10, lineHeight: '20px', textAlign: 'center',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setAttachedPhoto(null)}
+                  >
+                    ✕
+                  </span>
+                </div>
+              ) : null}
+              <Button
+                size="small"
+                color={attachedPhoto ? 'default' : 'primary'}
+                fill={attachedPhoto ? 'none' : 'solid'}
+                onClick={handlePhotoSheet}
+                loading={capturing}
+              >
+                <CameraOutline /> {attachedPhoto ? '更换' : '拍照上传'}
+              </Button>
+            </div>
+          </Form.Item>
+
+          <Form.Item label="复诊日期">
+            <DatePicker
+              value={formData.followUpDate}
+              onConfirm={val => setFormData(p => ({ ...p, followUpDate: val || undefined }))}
+              min={new Date()}
+            >
+              {value => value?.toLocaleDateString('zh-CN') || '请选择（有复诊建议选填）'}
+            </DatePicker>
+          </Form.Item>
+
+          <Form.Item label="备注">
+            <TextArea
+              placeholder="其他说明"
+              rows={2}
+              value={formData.notes}
+              onChange={val => setFormData(p => ({ ...p, notes: val }))}
+            />
+          </Form.Item>
+        </Form>
+
+        <Button
+          block
+          color="primary"
+          size="large"
+          loading={loading}
+          onClick={handleSubmit}
+          style={{ marginTop: 24, borderRadius: 8 }}
+        >
+          {isEdit ? '保存修改' : '保存记录'}
+        </Button>
+      </div>
+
+      {/* Department Picker */}
+      <Picker
+        columns={deptColumns}
+        visible={deptVisible}
+        onClose={() => setDeptVisible(false)}
+        value={formData.department ? [formData.department] : undefined}
+        onConfirm={val => {
+          setFormData(p => ({ ...p, department: (val as string[])[0] }))
+          setDeptVisible(false)
+        }}
+        title="选择科室"
+      />
+
+      {/* Photo Viewer */}
+      {attachedPhoto && (
+        <ImageViewer
+          image={attachedPhoto.dataUrl}
+          visible={viewerVisible}
+          onClose={() => setViewerVisible(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+export default VisitFormPage
