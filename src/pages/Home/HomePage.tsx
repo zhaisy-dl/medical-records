@@ -52,9 +52,11 @@ const HomePage = () => {
       const analysis = await analyzeHealth(visits, indicators, profile)
       if (analysis) {
         setAiAnalysis(analysis)
+      } else {
+        Toast.show({ icon: 'fail', content: '分析失败，请重试' })
       }
-    } catch {
-      Toast.show({ icon: 'fail', content: 'AI分析失败，请稍后重试' })
+    } catch (e: any) {
+      Toast.show({ icon: 'fail', content: 'AI分析失败: ' + (e.message || '请稍后重试') })
     }
   }
 
