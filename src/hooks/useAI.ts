@@ -96,27 +96,23 @@ export function useAI() {
     progress: '',
     progressPct: 0,
     error: null,
-    supported: true, // Always supported — no Web Worker needed
+    supported: true,
   })
 
   const updateState = useCallback((partial: Partial<AIState>) => {
     setState(prev => ({ ...prev, ...partial }))
   }, [])
 
-  // OCR report image
   const ocrReport = useCallback(async (imageData: string): Promise<Record<string, string>> => {
     updateState({ loading: true, progress: '正在加载OCR引擎...', progressPct: 0, error: null })
-
     try {
       const text = await recognizeImage(imageData, (msg, pct) => {
         updateState({ progress: msg, progressPct: pct })
       })
-
       const fields = extractMedicalFields(text)
       if (Object.keys(fields).length === 0 && text.trim()) {
         fields.diagnosis = text.trim().substring(0, 200)
       }
-
       updateState({ loading: false, progress: '识别完成', progressPct: 100 })
       return fields
     } catch (e: any) {
@@ -125,24 +121,18 @@ export function useAI() {
     }
   }, [updateState])
 
-  // Health analysis — local computation, no model download
-  const analyzeHealth = useCallback(async (
+  const doAnalyzeHealth = useCallback(async (
     visits: Visit[],
     indicators: Indicator[],
     profile: Record<string, string>,
   ): Promise<string> => {
     updateState({ loading: true, progress: '正在分析健康数据...', progressPct: 30, error: null })
-
     try {
-      // Simulate async work with small delay for UX
       await new Promise(r => setTimeout(r, 500))
       updateState({ progress: '正在生成分析报告...', progressPct: 70 })
-
       const analysis = localHealthAnalysis(visits, indicators, profile)
-
       await new Promise(r => setTimeout(r, 300))
       updateState({ loading: false, progress: '', progressPct: 100 })
-
       return analysis
     } catch (e: any) {
       updateState({ loading: false, error: e.message || '分析失败' })
@@ -150,23 +140,16 @@ export function useAI() {
     }
   }, [updateState])
 
-  // Drug advice using local knowledge base
-  const getDrugAdvice = useCallback(async (diagnosis: string, medication: string): Promise<string[]> => {
+  const doGetDrugAdvice = useCallback(async (diagnosis: string, medication: string): Promise<string[]> => {
     updateState({ loading: true, progress: '正在查询用药知识库...', progressPct: 50, error: null })
-
     try {
       await new Promise(r => setTimeout(r, 300))
-
       let advice: string[] = []
-
-      // Check medication knowledge base
       for (const [drug, tips] of Object.entries(drugKB)) {
         if (medication.includes(drug)) {
           advice.push(...tips.map(t => `【${drug}】${t}`))
         }
       }
-
-      // Generic advice based on diagnosis
       if (diagnosis.includes('高血压') || diagnosis.includes('血压')) {
         advice.push('【通用】低盐饮食，每日盐摄入<6g')
         advice.push('【通用】定期监测血压，早晚各一次')
@@ -180,11 +163,7 @@ export function useAI() {
         advice.push('【通用】避免剧烈运动和情绪激动')
         advice.push('【通用】定期复查心电图和心脏超声')
       }
-
-      if (advice.length === 0) {
-        advice.push('暂无特定禁忌提醒，请遵医嘱用药')
-      }
-
+      if (advice.length === 0) advice.push('暂无特定禁忌提醒，请遵医嘱用药')
       updateState({ loading: false, progress: '', progressPct: 100 })
       return advice
     } catch (e: any) {
@@ -193,15 +172,20 @@ export function useAI() {
     }
   }, [updateState])
 
-  const resetAI = useCallback(() => {
-    updateState({ loading: false, progress: '', progressPct: 0, error: null })
-  }, [updateState])
-
   return {
     ...state,
     ocrReport,
-    analyzeHealth,
-    getDrugAdvice,
-    resetAI,
+    analyzeHealth: doAnalyzeHealth,
+    getDrugAdvice: doGetDrugAdvice,
+    resetAI: () => updateState({ loading: false, progress: '', progressPct: 0, error: null }),
   }
+}
+
+// Standalone export for use outside React components
+export async function analyzeHealth(
+  visits: Visit[],
+  indicators: Indicator[],
+  profile: Record<string, string>,
+): Promise<string> {
+  return localHealthAnalysis(visits, indicators, profile)
 }

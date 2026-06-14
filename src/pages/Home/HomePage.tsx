@@ -7,7 +7,7 @@ import { visitService } from '@/services/visitService'
 import { medicationService } from '@/services/medicationService'
 import { indicatorService } from '@/services/indicatorService'
 import { reminderService } from '@/services/reminderService'
-import { useAI } from '@/hooks/useAI'
+import { analyzeHealth } from '@/hooks/useAI'
 import { formatRelative } from '@/utils/date'
 import type { Visit, Reminder, Indicator } from '@/db/schema'
 
@@ -20,7 +20,7 @@ const HomePage = () => {
 
   // AI analysis
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null)
-  const { loading: aiLoading, progress: aiProgress, progressPct: aiPct, analyzeHealth, error: aiError } = useAI()
+  const [aiLoading, setAiLoading] = useState(false)
 
   const loadData = async () => {
     const [visits, meds, indicators, reminders, allReminders] = await Promise.all([
@@ -45,18 +45,21 @@ const HomePage = () => {
   }
 
   const handleAIAnalysis = async () => {
+    setAiLoading(true)
     try {
       const profile = JSON.parse(localStorage.getItem('user_profile') || '{}')
       const visits = await visitService.list()
       const indicators = await indicatorService.list()
-      const analysis = await analyzeHealth(visits, indicators, profile)
-      if (analysis) {
-        setAiAnalysis(analysis)
+      const result = await analyzeHealth(visits, indicators, profile)
+      if (result) {
+        setAiAnalysis(result)
       } else {
         Toast.show({ icon: 'fail', content: '分析失败，请重试' })
       }
     } catch (e: any) {
-      Toast.show({ icon: 'fail', content: 'AI分析失败: ' + (e.message || '请稍后重试') })
+      Toast.show({ icon: 'fail', content: '分析失败: ' + (e.message || '未知错误') })
+    } finally {
+      setAiLoading(false)
     }
   }
 
@@ -116,7 +119,7 @@ const HomePage = () => {
               <span style={{ fontSize: 28 }}>🤖</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>AI 健康分析</div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>基于您的就诊记录和检查指标，AI分析健康趋势</div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>基于您的就诊记录和检查指标，分析健康趋势</div>
               </div>
               <RightOutline style={{ color: '#fff' }} />
             </div>
@@ -126,23 +129,7 @@ const HomePage = () => {
         {aiLoading && (
           <div className="card" style={{ textAlign: 'center', padding: '24px 16px' }}>
             <SpinLoading style={{ '--size': '24px', margin: '0 auto' }} color="primary" />
-            <div style={{ fontSize: 13, color: '#666', marginTop: 12 }}>{aiProgress}</div>
-            <div style={{
-              width: '100%',
-              height: 4,
-              background: '#eee',
-              borderRadius: 2,
-              marginTop: 8,
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${aiPct}%`,
-                height: '100%',
-                background: '#1677ff',
-                borderRadius: 2,
-                transition: 'width 0.3s',
-              }} />
-            </div>
+            <div style={{ fontSize: 13, color: '#666', marginTop: 12 }}>正在分析您的健康数据...</div>
           </div>
         )}
 
@@ -160,15 +147,6 @@ const HomePage = () => {
             <div style={{ fontSize: 10, color: '#ccc', marginTop: 8 }}>
               AI分析仅供参考，不构成医疗建议
             </div>
-          </div>
-        )}
-
-        {aiError && (
-          <div className="card" style={{ textAlign: 'center', color: '#ff3141', fontSize: 13 }}>
-            {aiError}
-            <Button size="mini" fill="none" color="primary" onClick={handleAIAnalysis} style={{ marginTop: 8 }}>
-              重试
-            </Button>
           </div>
         )}
       </div>
